@@ -1,33 +1,46 @@
-import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
+import pool from '../config/database.js';
 
-const userSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  email: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
-  role: { type: String, enum: ['user', 'venue', 'admin'], default: 'user' },
-  subscription: {
-    status: { type: String, enum: ['active', 'inactive', 'expired'], default: 'inactive' },
-    plan: { type: String, enum: ['free', 'premium'], default: 'free' },
-    stripeCustomerId: String,
-    subscriptionId: String,
-    expiresAt: Date
+export const User = {
+  async create(userData) {
+    const { name, email, password, role = 'user' } = userData;
+    const hashedPassword = await bcrypt.hash(password, 12);
+    
+    const result = await pool.query(
+      'INSERT INTO users (name, email, password, role) VALUES ($1, $2, $3, $4) RETURNING *',
+      [name, email, hashedPassword, role]
+    );
+    return result.rows[0];
   },
-  venue: { type: mongoose.Schema.Types.ObjectId, ref: 'Venue' },
-  preferences: {
-    genres: [String],
-    volume: { type: Number, default: 75 }
+
+  async findByEmail(email) {
+    const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+    return result.rows[0];
+  },
+
+  async findById(id) {
+    const result = await pool.query(`
+      SELECT u.*, v.id as venue_id, v.name as venue_name 
+      FROM users u 
+      LEFT JOIN venues v ON u.venue_id = v.id 
+      WHERE u.id = $1
+    `, [id]);
+    return result.rows[0];
+  },
+
+  async updateSubscription(userId, subscriptionData) {
+    const { status, plan, stripeCustomerId, subscriptionId, expiresAt } = subscriptionData;
+    await pool.query(`
+      UPDATE users 
+      SET subscription_status = $1, subscription_plan = $2, 
+          stripe_customer_id = $3, subscription_id = $4, expires_at = $5
+      WHERE id = $6
+    `, [status, plan, stripeCustomerId, subscriptionId, expiresAt, userId]);
+  },
+
+  async comparePassword(plainPassword, hashedPassword) {
+    return bcrypt.compare(plainPassword, hashedPassword);
   }
-}, { timestamps: true });
-
-userSchema.pre('save', async function(next) {
-  if (!this.isModified('password')) return next();
-  this.password = await bcrypt.hash(this.password, 12);
-  next();
-});
-
-userSchema.methods.comparePassword = async function(password) {
-  return bcrypt.compare(password, this.password);
 };
 
-export default mongoose.model('User', userSchema);
+export default User;

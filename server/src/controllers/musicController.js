@@ -14,10 +14,23 @@ export const searchTracks = async (req, res) => {
       ]
     }).limit(parseInt(limit));
 
-    // Search Spotify if needed
+    // Use demo tracks if no Spotify credentials
     let spotifyTracks = [];
     if (localTracks.length < limit) {
-      spotifyTracks = await searchSpotify(q, limit - localTracks.length);
+      if (process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_ID !== 'demo_spotify_client_id') {
+        spotifyTracks = await searchSpotify(q, limit - localTracks.length);
+      } else {
+        // Demo tracks fallback
+        const demoTracks = [
+          { id: 'demo1', title: 'Blinding Lights', artist: 'The Weeknd', duration: 200, thumbnail: 'https://images.pexels.com/photos/1763075/pexels-photo-1763075.jpeg?auto=compress&cs=tinysrgb&w=300&h=300&fit=crop' },
+          { id: 'demo2', title: 'Levitating', artist: 'Dua Lipa', duration: 203, thumbnail: 'https://images.pexels.com/photos/1190297/pexels-photo-1190297.jpeg?auto=compress&cs=tinysrgb&w=300&h=300&fit=crop' },
+          { id: 'demo3', title: 'Good 4 U', artist: 'Olivia Rodrigo', duration: 178, thumbnail: 'https://images.pexels.com/photos/1699161/pexels-photo-1699161.jpeg?auto=compress&cs=tinysrgb&w=300&h=300&fit=crop' }
+        ];
+        spotifyTracks = demoTracks.filter(track => 
+          track.title.toLowerCase().includes(q.toLowerCase()) ||
+          track.artist.toLowerCase().includes(q.toLowerCase())
+        );
+      }
     }
 
     res.json({

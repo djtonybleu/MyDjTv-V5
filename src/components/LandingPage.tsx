@@ -1,9 +1,13 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Music, Smartphone, TrendingUp, Users, Play, Zap, LogIn, Target } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { LoginForm } from './LoginForm';
+import { useAuth } from '../context/AuthContext';
 
 export const LandingPage: React.FC = () => {
+  const [showLogin, setShowLogin] = useState(false);
+  const { user } = useAuth();
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
@@ -50,16 +54,15 @@ export const LandingPage: React.FC = () => {
                 </motion.button>
               </Link>
               
-              <Link to="/admin">
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  className="bg-white/10 backdrop-blur-sm text-white px-8 py-4 rounded-full font-semibold text-lg border border-white/20 hover:bg-white/20 transition-all duration-300"
-                >
-                  <LogIn className="w-5 h-5 inline mr-2" />
-                  Acceso Empresarial
-                </motion.button>
-              </Link>
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setShowLogin(true)}
+                className="bg-white/10 backdrop-blur-sm text-white px-8 py-4 rounded-full font-semibold text-lg border border-white/20 hover:bg-white/20 transition-all duration-300"
+              >
+                <LogIn className="w-5 h-5 inline mr-2" />
+                Iniciar Sesión
+              </motion.button>
             </div>
 
             {/* Call to Action Subtitle */}
@@ -336,6 +339,8 @@ export const LandingPage: React.FC = () => {
           </motion.div>
         </div>
       </section>
+
+      {showLogin && <LoginForm onClose={() => setShowLogin(false)} />}
     </div>
   );
 };

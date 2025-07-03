@@ -7,11 +7,13 @@ import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 
 import { connectDB } from './config/database.js';
+import { initializeAnalytics } from './services/analyticsService.js';
 import authRoutes from './routes/auth.js';
 import venueRoutes from './routes/venues.js';
 import musicRoutes from './routes/music.js';
 import paymentRoutes from './routes/payments.js';
 import commercialRoutes from './routes/commercials.js';
+import demoRoutes from './routes/demo.js';
 
 dotenv.config();
 
@@ -45,6 +47,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Connect to database
 connectDB();
+initializeAnalytics();
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -52,6 +55,7 @@ app.use('/api/venues', venueRoutes);
 app.use('/api/music', musicRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/commercials', commercialRoutes);
+app.use('/api/demo', demoRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
