@@ -7,12 +7,7 @@ export const searchTracks = async (req, res) => {
     const { q, limit = 20 } = req.query;
     
     // Search in local database first
-    const localTracks = await Track.find({
-      $or: [
-        { title: { $regex: q, $options: 'i' } },
-        { artist: { $regex: q, $options: 'i' } }
-      ]
-    }).limit(parseInt(limit));
+    const localTracks = await Track.search(q, parseInt(limit));
 
     // Use demo tracks if no Spotify credentials
     let spotifyTracks = [];
@@ -66,11 +61,8 @@ export const createPlaylist = async (req, res) => {
     
     const playlist = await Playlist.create({
       name,
-      venue: req.user.venue._id,
-      tracks,
-      genre,
-      mood,
-      timeOfDay
+      venue_id: req.user.venue_id,
+      genre
     });
 
     await playlist.populate('tracks');
@@ -82,8 +74,7 @@ export const createPlaylist = async (req, res) => {
 
 export const getPlaylists = async (req, res) => {
   try {
-    const playlists = await Playlist.find({ venue: req.user.venue._id })
-      .populate('tracks');
+    const playlists = await Playlist.findByVenueId(req.user.venue_id);
     
     res.json({ success: true, playlists });
   } catch (error) {
@@ -93,11 +84,7 @@ export const getPlaylists = async (req, res) => {
 
 export const updatePlaylist = async (req, res) => {
   try {
-    const playlist = await Playlist.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true, runValidators: true }
-    ).populate('tracks');
+    const playlist = await Playlist.update(req.params.id, req.body);
 
     if (!playlist) {
       return res.status(404).json({ message: 'Playlist not found' });

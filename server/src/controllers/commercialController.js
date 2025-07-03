@@ -24,8 +24,8 @@ export const uploadCommercial = [
 
       const commercial = await Commercial.create({
         title,
-        venue: req.user.venue._id,
-        audioUrl: result.secure_url,
+        venue_id: req.user.venue_id,
+        audio_url: result.secure_url,
         duration: parseInt(duration),
         thumbnail: result.secure_url.replace('.mp3', '.jpg')
       });
@@ -39,7 +39,7 @@ export const uploadCommercial = [
 
 export const getCommercials = async (req, res) => {
   try {
-    const commercials = await Commercial.find({ venue: req.user.venue._id });
+    const commercials = await Commercial.findByVenueId(req.user.venue_id);
     res.json({ success: true, commercials });
   } catch (error) {
     res.status(400).json({ message: error.message });
@@ -48,11 +48,7 @@ export const getCommercials = async (req, res) => {
 
 export const updateCommercial = async (req, res) => {
   try {
-    const commercial = await Commercial.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true, runValidators: true }
-    );
+    const commercial = await Commercial.update(req.params.id, req.body);
 
     if (!commercial) {
       return res.status(404).json({ message: 'Commercial not found' });
@@ -66,7 +62,7 @@ export const updateCommercial = async (req, res) => {
 
 export const deleteCommercial = async (req, res) => {
   try {
-    const commercial = await Commercial.findByIdAndDelete(req.params.id);
+    await Commercial.delete(req.params.id);
     
     if (!commercial) {
       return res.status(404).json({ message: 'Commercial not found' });

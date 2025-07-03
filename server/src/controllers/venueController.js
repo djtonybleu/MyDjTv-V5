@@ -9,8 +9,10 @@ export const createVenue = async (req, res) => {
       name,
       type,
       location,
-      owner: req.user._id,
-      branding
+      owner_id: req.user.id,
+      logo: branding?.logo,
+      primary_color: branding?.primaryColor,
+      secondary_color: branding?.secondaryColor
     });
 
     // Generate QR code
@@ -27,7 +29,7 @@ export const createVenue = async (req, res) => {
 
 export const getVenues = async (req, res) => {
   try {
-    const venues = await Venue.find({ owner: req.user._id });
+    const venues = await Venue.findByOwnerId(req.user.id);
     res.json({ success: true, venues });
   } catch (error) {
     res.status(400).json({ message: error.message });
@@ -48,11 +50,7 @@ export const getVenue = async (req, res) => {
 
 export const updateVenue = async (req, res) => {
   try {
-    const venue = await Venue.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true, runValidators: true }
-    );
+    const venue = await Venue.update(req.params.id, req.body);
     
     if (!venue) {
       return res.status(404).json({ message: 'Venue not found' });
