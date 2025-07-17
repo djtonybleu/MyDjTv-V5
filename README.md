@@ -17,7 +17,7 @@ MyDJTV es una plataforma innovadora que permite a negocios (restaurantes, gimnas
 
 ### Backend
 - **Node.js** + **Express**
-- **PostgreSQL** con **pg**
+- **PostgreSQL** con **Prisma**
 - **Socket.IO** para WebSockets
 - **JWT** para autenticación
 - **Stripe** para suscripciones
@@ -55,8 +55,9 @@ npm run dev
 ### Backend (.env)
 ```
 PORT=5000
-MONGODB_URI=mongodb://localhost:27017/mydjtv
-JWT_SECRET=your-super-secret-jwt-key-here
+DATABASE_URL=postgresql://postgres:password@localhost:5432/mydjtv
+JWT_SECRET=your-super-secret-jwt-key-minimum-32-characters
+JWT_REFRESH_SECRET=your-refresh-secret-different-from-jwt
 STRIPE_SECRET_KEY=sk_test_your_stripe_secret_key
 STRIPE_WEBHOOK_SECRET=whsec_your_webhook_secret
 SPOTIFY_CLIENT_ID=your_spotify_client_id
@@ -97,7 +98,7 @@ VITE_STRIPE_PUBLISHABLE_KEY=pk_test_your_stripe_publishable_key
 - ✅ Integración con Spotify API
 - ✅ Procesamiento de pagos con Stripe
 - ✅ Upload de archivos a Cloudinary
-- ✅ Base de datos MongoDB
+- ✅ Base de datos PostgreSQL con Prisma
 
 ## 🌐 Despliegue en Render
 
