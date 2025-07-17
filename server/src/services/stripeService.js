@@ -1,24 +1,28 @@
 import Stripe from 'stripe';
-import User from '../models/User.js';
+import prisma from '../config/prisma.js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 export const createSubscription = async (userId, priceId) => {
   try {
-    const user = await User.findById(userId);
+    const user = await prisma.user.findUnique({
+      where: { id: userId }
+    });
     
-    let customerId = user.subscription.stripeCustomerId;
+    let customerId = user.stripeCustomerId;
     
     if (!customerId) {
       const customer = await stripe.customers.create({
         email: user.email,
         name: user.name,
-        metadata: { userId: user._id.toString() }
+        metadata: { userId: user.id.toString() }
       });
       customerId = customer.id;
       
-      user.subscription.stripeCustomerId = customerId;
-      await user.save();
+      await prisma.user.update({
+        where: { id: userId },
+        data: { stripeCustomerId: customerId }
+      });
     }
 
     const subscription = await stripe.subscriptions.create({
@@ -68,16 +72,20 @@ export const handleWebhook = async (req, res) => {
 
 const updateUserSubscription = async (subscription) => {
   try {
-    const user = await User.findOne({ 
-      'subscription.stripeCustomerId': subscription.customer 
+    const user = await prisma.user.findFirst({ 
+      where: { stripeCustomerId: subscription.customer }
     });
     
     if (user) {
-      user.subscription.status = subscription.status === 'active' ? 'active' : 'inactive';
-      user.subscription.plan = 'premium';
-      user.subscription.subscriptionId = subscription.id;
-      user.subscription.expiresAt = new Date(subscription.current_period_end * 1000);
-      await user.save();
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          subscriptionStatus: subscription.status === 'active' ? 'active' : 'inactive',
+          subscriptionPlan: 'premium',
+          subscriptionId: subscription.id,
+          expiresAt: new Date(subscription.current_period_end * 1000)
+        }
+      });
     }
   } catch (error) {
     console.error('Update subscription error:', error);
@@ -86,14 +94,18 @@ const updateUserSubscription = async (subscription) => {
 
 const cancelUserSubscription = async (subscription) => {
   try {
-    const user = await User.findOne({ 
-      'subscription.subscriptionId': subscription.id 
+    const user = await prisma.user.findFirst({ 
+      where: { subscriptionId: subscription.id }
     });
     
     if (user) {
-      user.subscription.status = 'expired';
-      user.subscription.plan = 'free';
-      await user.save();
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          subscriptionStatus: 'expired',
+          subscriptionPlan: 'free'
+        }
+      });
     }
   } catch (error) {
     console.error('Cancel subscription error:', error);

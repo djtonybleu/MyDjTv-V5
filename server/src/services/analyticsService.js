@@ -1,27 +1,25 @@
-import pool from '../config/database.js';
+import prisma from '../config/prisma.js';
 import cron from 'node-cron';
 
 export const trackPlay = async (venueId, trackId, userId = null) => {
   try {
     // Update venue analytics
-    await pool.query(`
-      UPDATE venues 
-      SET total_plays = total_plays + 1 
-      WHERE id = $1
-    `, [venueId]);
+    await prisma.venue.update({
+      where: { id: venueId },
+      data: { totalPlays: { increment: 1 } }
+    });
 
     // Update track plays
-    await pool.query(`
-      UPDATE tracks 
-      SET plays = plays + 1 
-      WHERE id = $1
-    `, [trackId]);
+    await prisma.track.update({
+      where: { id: trackId },
+      data: { plays: { increment: 1 } }
+    });
 
     // Log play event
-    await pool.query(`
-      INSERT INTO play_logs (venue_id, track_id, user_id, played_at) 
-      VALUES ($1, $2, $3, NOW())
-    `, [venueId, trackId, userId]);
+    await prisma.$executeRaw`
+      INSERT INTO play_logs (venue_id, track_id, user_id, created_at) 
+      VALUES (${venueId}, ${trackId}, ${userId}, NOW())
+    `;
 
     console.log(`Play tracked: Venue ${venueId}, Track ${trackId}`);
   } catch (error) {
@@ -31,11 +29,10 @@ export const trackPlay = async (venueId, trackId, userId = null) => {
 
 export const trackCommercialView = async (venueId, commercialId) => {
   try {
-    await pool.query(`
-      UPDATE commercials 
-      SET plays = plays + 1 
-      WHERE id = $1
-    `, [commercialId]);
+    await prisma.commercial.update({
+      where: { id: commercialId },
+      data: { plays: { increment: 1 } }
+    });
 
     console.log(`Commercial view tracked: ${commercialId}`);
   } catch (error) {
@@ -45,19 +42,19 @@ export const trackCommercialView = async (venueId, commercialId) => {
 
 export const getVenueAnalytics = async (venueId, days = 30) => {
   try {
-    const result = await pool.query(`
+    const result = await prisma.$queryRaw`
       SELECT 
-        DATE(played_at) as date,
+        DATE_TRUNC('day', created_at) as date,
         COUNT(*) as plays,
         COUNT(DISTINCT user_id) as unique_users
       FROM play_logs 
-      WHERE venue_id = $1 
-        AND played_at >= NOW() - INTERVAL '${days} days'
-      GROUP BY DATE(played_at)
+      WHERE venue_id = ${venueId} 
+        AND created_at >= NOW() - INTERVAL '${days} days'
+      GROUP BY DATE_TRUNC('day', created_at)
       ORDER BY date DESC
-    `, [venueId]);
+    `;
 
-    return result.rows;
+    return result;
   } catch (error) {
     console.error('Error getting analytics:', error);
     return [];
@@ -69,16 +66,23 @@ cron.schedule('0 0 * * *', async () => {
   console.log('Running daily analytics aggregation...');
   
   try {
+    // Get all venues
+    const venues = await prisma.venue.findMany();
+    
     // Update unique users count for each venue
-    await pool.query(`
-      UPDATE venues 
-      SET unique_users = (
-        SELECT COUNT(DISTINCT user_id) 
+    for (const venue of venues) {
+      const uniqueUsers = await prisma.$queryRaw`
+        SELECT COUNT(DISTINCT user_id) as count
         FROM play_logs 
-        WHERE venue_id = venues.id 
-          AND played_at >= NOW() - INTERVAL '30 days'
-      )
-    `);
+        WHERE venue_id = ${venue.id} 
+          AND created_at >= NOW() - INTERVAL '30 days'
+      `;
+      
+      await prisma.venue.update({
+        where: { id: venue.id },
+        data: { uniqueUsers: uniqueUsers[0].count }
+      });
+    }
 
     console.log('Daily analytics aggregation completed');
   } catch (error) {
@@ -89,15 +93,15 @@ cron.schedule('0 0 * * *', async () => {
 // Create play_logs table if it doesn't exist
 export const initializeAnalytics = async () => {
   try {
-    await pool.query(`
+    await prisma.$executeRaw`
       CREATE TABLE IF NOT EXISTS play_logs (
         id SERIAL PRIMARY KEY,
         venue_id INTEGER REFERENCES venues(id),
-        track_id INTEGER,
+        track_id INTEGER REFERENCES tracks(id),
         user_id INTEGER REFERENCES users(id),
-        played_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
-    `);
+    `;
     console.log('Analytics tables initialized');
   } catch (error) {
     console.error('Error initializing analytics:', error);

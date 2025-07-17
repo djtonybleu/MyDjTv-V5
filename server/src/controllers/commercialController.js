@@ -1,4 +1,4 @@
-import Commercial from '../models/Commercial.js';
+import prisma from '../config/prisma.js';
 import multer from 'multer';
 import { v2 as cloudinary } from 'cloudinary';
 
@@ -22,12 +22,14 @@ export const uploadCommercial = [
         folder: 'mydjtv/commercials'
       });
 
-      const commercial = await Commercial.create({
-        title,
-        venue_id: req.user.venue_id,
-        audio_url: result.secure_url,
-        duration: parseInt(duration),
-        thumbnail: result.secure_url.replace('.mp3', '.jpg')
+      const commercial = await prisma.commercial.create({
+        data: {
+          title,
+          venueId: req.user.venueId,
+          audioUrl: result.secure_url,
+          duration: parseInt(duration),
+          thumbnail: result.secure_url.replace('.mp3', '.jpg')
+        }
       });
 
       res.status(201).json({ success: true, commercial });
@@ -39,7 +41,10 @@ export const uploadCommercial = [
 
 export const getCommercials = async (req, res) => {
   try {
-    const commercials = await Commercial.findByVenueId(req.user.venue_id);
+    const commercials = await prisma.commercial.findMany({
+      where: { venueId: req.user.venueId }
+    });
+    
     res.json({ success: true, commercials });
   } catch (error) {
     res.status(400).json({ message: error.message });
@@ -48,12 +53,11 @@ export const getCommercials = async (req, res) => {
 
 export const updateCommercial = async (req, res) => {
   try {
-    const commercial = await Commercial.update(req.params.id, req.body);
-
-    if (!commercial) {
-      return res.status(404).json({ message: 'Commercial not found' });
-    }
-
+    const commercial = await prisma.commercial.update({
+      where: { id: parseInt(req.params.id) },
+      data: req.body
+    });
+    
     res.json({ success: true, commercial });
   } catch (error) {
     res.status(400).json({ message: error.message });
@@ -62,12 +66,10 @@ export const updateCommercial = async (req, res) => {
 
 export const deleteCommercial = async (req, res) => {
   try {
-    await Commercial.delete(req.params.id);
+    await prisma.commercial.delete({
+      where: { id: parseInt(req.params.id) }
+    });
     
-    if (!commercial) {
-      return res.status(404).json({ message: 'Commercial not found' });
-    }
-
     res.json({ success: true, message: 'Commercial deleted' });
   } catch (error) {
     res.status(400).json({ message: error.message });

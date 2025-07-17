@@ -1,6 +1,5 @@
 import jwt from 'jsonwebtoken';
-import { User } from '../models/User.js';
-import env from '../config/env.js';
+import prisma from '../config/prisma.js';
 
 export const protect = async (req, res, next) => {
   try {
@@ -14,8 +13,12 @@ export const protect = async (req, res, next) => {
       return res.status(401).json({ message: 'No token provided' });
     }
 
-    const decoded = jwt.verify(token, env.JWT_SECRET);
-    const user = await User.findById(decoded.id);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.id },
+      include: { venue: true }
+    });
     
     if (!user) {
       return res.status(401).json({ message: 'User not found' });
@@ -24,7 +27,6 @@ export const protect = async (req, res, next) => {
     req.user = user;
     next();
   } catch (error) {
-    console.error('Auth middleware error:', error);
     res.status(401).json({ message: 'Invalid token' });
   }
 };
@@ -39,7 +41,7 @@ export const restrictTo = (...roles) => {
 };
 
 export const requireSubscription = (req, res, next) => {
-  if (req.user.subscription_status !== 'active') {
+  if (req.user.subscriptionStatus !== 'active') {
     return res.status(403).json({ message: 'Active subscription required' });
   }
   next();

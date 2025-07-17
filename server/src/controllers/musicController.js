@@ -1,5 +1,4 @@
-import Track from '../models/Track.js';
-import Playlist from '../models/Playlist.js';
+import prisma from '../config/prisma.js';
 import { searchSpotify, getSpotifyTrack } from '../services/spotifyService.js';
 
 export const searchTracks = async (req, res) => {
@@ -7,7 +6,15 @@ export const searchTracks = async (req, res) => {
     const { q, limit = 20 } = req.query;
     
     // Search in local database first
-    const localTracks = await Track.search(q, parseInt(limit));
+    const localTracks = await prisma.track.findMany({
+      where: {
+        OR: [
+          { title: { contains: q, mode: 'insensitive' } },
+          { artist: { contains: q, mode: 'insensitive' } }
+        ]
+      },
+      take: parseInt(limit)
+    });
 
     // Use demo tracks if no Spotify credentials
     let spotifyTracks = [];
@@ -39,7 +46,9 @@ export const searchTracks = async (req, res) => {
 
 export const getTrack = async (req, res) => {
   try {
-    let track = await Track.findById(req.params.id);
+    let track = await prisma.track.findUnique({
+      where: { id: parseInt(req.params.id) }
+    });
     
     if (!track && req.params.id.startsWith('spotify:')) {
       track = await getSpotifyTrack(req.params.id);
@@ -57,16 +66,41 @@ export const getTrack = async (req, res) => {
 
 export const createPlaylist = async (req, res) => {
   try {
-    const { name, tracks, genre, mood, timeOfDay } = req.body;
+    const { name, tracks, genre } = req.body;
     
-    const playlist = await Playlist.create({
-      name,
-      venue_id: req.user.venue_id,
-      genre
+    const playlist = await prisma.playlist.create({
+      data: {
+        name,
+        venueId: req.user.venueId,
+        genre
+      }
     });
 
-    await playlist.populate('tracks');
-    res.status(201).json({ success: true, playlist });
+    // Add tracks to playlist if provided
+    if (tracks && tracks.length > 0) {
+      const playlistTracks = tracks.map((trackId, index) => ({
+        playlistId: playlist.id,
+        trackId: parseInt(trackId),
+        position: index
+      }));
+
+      await prisma.playlistTrack.createMany({
+        data: playlistTracks
+      });
+    }
+
+    const playlistWithTracks = await prisma.playlist.findUnique({
+      where: { id: playlist.id },
+      include: {
+        tracks: {
+          include: {
+            track: true
+          }
+        }
+      }
+    });
+
+    res.status(201).json({ success: true, playlist: playlistWithTracks });
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
@@ -74,7 +108,16 @@ export const createPlaylist = async (req, res) => {
 
 export const getPlaylists = async (req, res) => {
   try {
-    const playlists = await Playlist.findByVenueId(req.user.venue_id);
+    const playlists = await prisma.playlist.findMany({
+      where: { venueId: req.user.venueId },
+      include: {
+        tracks: {
+          include: {
+            track: true
+          }
+        }
+      }
+    });
     
     res.json({ success: true, playlists });
   } catch (error) {
@@ -84,13 +127,47 @@ export const getPlaylists = async (req, res) => {
 
 export const updatePlaylist = async (req, res) => {
   try {
-    const playlist = await Playlist.update(req.params.id, req.body);
+    const { name, genre, tracks } = req.body;
+    
+    const playlist = await prisma.playlist.update({
+      where: { id: parseInt(req.params.id) },
+      data: {
+        name,
+        genre
+      }
+    });
 
-    if (!playlist) {
-      return res.status(404).json({ message: 'Playlist not found' });
+    // Update tracks if provided
+    if (tracks) {
+      // Remove existing tracks
+      await prisma.playlistTrack.deleteMany({
+        where: { playlistId: parseInt(req.params.id) }
+      });
+
+      // Add new tracks
+      const playlistTracks = tracks.map((trackId, index) => ({
+        playlistId: parseInt(req.params.id),
+        trackId: parseInt(trackId),
+        position: index
+      }));
+
+      await prisma.playlistTrack.createMany({
+        data: playlistTracks
+      });
     }
 
-    res.json({ success: true, playlist });
+    const updatedPlaylist = await prisma.playlist.findUnique({
+      where: { id: parseInt(req.params.id) },
+      include: {
+        tracks: {
+          include: {
+            track: true
+          }
+        }
+      }
+    });
+
+    res.json({ success: true, playlist: updatedPlaylist });
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
