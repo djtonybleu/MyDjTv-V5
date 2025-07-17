@@ -17,7 +17,7 @@ MyDJTV es una plataforma innovadora que permite a negocios (restaurantes, gimnas
 
 ### Backend
 - **Node.js** + **Express**
-- **MongoDB** con **Mongoose**
+- **PostgreSQL** con **pg**
 - **Socket.IO** para WebSockets
 - **JWT** para autenticación
 - **Stripe** para suscripciones

@@ -2,7 +2,7 @@ services:
   - type: web
     name: mydjtv-backend
     env: node
-    buildCommand: cd server && npm install
+    buildCommand: cd server && npm install && npx prisma generate && npx prisma db push
     startCommand: cd server && npm start
     envVars:
       - key: NODE_ENV

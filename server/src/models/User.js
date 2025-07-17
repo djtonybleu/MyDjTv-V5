@@ -1,45 +1,43 @@
-const { Pool } = require('pg');
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
-});
+import prisma from '../config/database.js';
+import bcrypt from 'bcryptjs';
 
 class User {
   constructor(data) {
     this.id = data.id;
     this.email = data.email;
-    this.password = data.password;
-    this.name = data.name;
-    this.role = data.role || 'user';
-    this.is_premium = data.is_premium || false;
-    this.stripe_customer_id = data.stripe_customer_id;
-    this.subscription_id = data.subscription_id;
-    this.subscription_status = data.subscription_status || 'inactive';
-    this.created_at = data.created_at;
-    this.updated_at = data.updated_at;
+    this.passwordHash = data.passwordHash;
+    this.role = data.role || 'USER';
+    this.subscriptionStatus = data.subscriptionStatus || 'FREE';
+    this.stripeCustomerId = data.stripeCustomerId;
+    this.profileImage = data.profileImage;
+    this.isActive = data.isActive !== undefined ? data.isActive : true;
+    this.lastLogin = data.lastLogin;
+    this.createdAt = data.createdAt;
+    this.updatedAt = data.updatedAt;
   }
 
   // Crear usuario
   static async create(userData) {
-    const query = `
-      INSERT INTO users (email, password, name, role, is_premium, subscription_status) 
-      VALUES ($1, $2, $3, $4, $5, $6) 
-      RETURNING *
-    `;
-    
-    const values = [
-      userData.email,
-      userData.password,
-      userData.name,
-      userData.role || 'user',
-      userData.is_premium || false,
-      userData.subscription_status || 'inactive'
-    ];
-
     try {
-      const result = await pool.query(query, values);
-      return new User(result.rows[0]);
+      // Hash password if provided
+      let passwordHash = userData.passwordHash;
+      if (userData.password) {
+        passwordHash = await bcrypt.hash(userData.password, 12);
+      }
+
+      const user = await prisma.user.create({
+        data: {
+          email: userData.email,
+          passwordHash,
+          role: userData.role || 'USER',
+          subscriptionStatus: userData.subscriptionStatus || 'FREE',
+          stripeCustomerId: userData.stripeCustomerId,
+          profileImage: userData.profileImage,
+          isActive: userData.isActive !== undefined ? userData.isActive : true
+        }
+      });
+
+      return new User(user);
     } catch (error) {
       throw new Error(`Error creating user: ${error.message}`);
     }
@@ -47,11 +45,19 @@ class User {
 
   // Buscar por email
   static async findByEmail(email) {
-    const query = 'SELECT * FROM users WHERE email = $1';
-    
     try {
-      const result = await pool.query(query, [email]);
-      return result.rows[0] ? new User(result.rows[0]) : null;
+      const user = await prisma.user.findUnique({
+        where: { email },
+        include: {
+          ownedVenues: true,
+          sessions: {
+            where: { isActive: true },
+            orderBy: { createdAt: 'desc' }
+          }
+        }
+      });
+      
+      return user ? new User(user) : null;
     } catch (error) {
       throw new Error(`Error finding user by email: ${error.message}`);
     }
@@ -59,11 +65,19 @@ class User {
 
   // Buscar por ID
   static async findById(id) {
-    const query = 'SELECT * FROM users WHERE id = $1';
-    
     try {
-      const result = await pool.query(query, [id]);
-      return result.rows[0] ? new User(result.rows[0]) : null;
+      const user = await prisma.user.findUnique({
+        where: { id: parseInt(id) },
+        include: {
+          ownedVenues: true,
+          sessions: {
+            where: { isActive: true },
+            orderBy: { createdAt: 'desc' }
+          }
+        }
+      });
+      
+      return user ? new User(user) : null;
     } catch (error) {
       throw new Error(`Error finding user by ID: ${error.message}`);
     }
@@ -71,46 +85,43 @@ class User {
 
   // Obtener todos los usuarios (con paginación)
   static async findAll(page = 1, limit = 10, filters = {}) {
-    const offset = (page - 1) * limit;
-    let query = 'SELECT * FROM users';
-    let countQuery = 'SELECT COUNT(*) FROM users';
-    const values = [];
-    let whereClause = '';
-
-    // Aplicar filtros
-    if (filters.role) {
-      whereClause += ' WHERE role = $1';
-      values.push(filters.role);
-    }
-
-    if (filters.is_premium !== undefined) {
-      whereClause += values.length > 0 ? ' AND is_premium = $' + (values.length + 1) : ' WHERE is_premium = $1';
-      values.push(filters.is_premium);
-    }
-
-    if (filters.search) {
-      const searchClause = values.length > 0 ? 
-        ` AND (name ILIKE $${values.length + 1} OR email ILIKE $${values.length + 2})` : 
-        ` WHERE (name ILIKE $1 OR email ILIKE $2)`;
-      whereClause += searchClause;
-      values.push(`%${filters.search}%`, `%${filters.search}%`);
-    }
-
-    query += whereClause + ' ORDER BY created_at DESC LIMIT $' + (values.length + 1) + ' OFFSET $' + (values.length + 2);
-    countQuery += whereClause;
-
+    const skip = (page - 1) * limit;
+    
     try {
-      const [dataResult, countResult] = await Promise.all([
-        pool.query(query, [...values, limit, offset]),
-        pool.query(countQuery, values)
+      // Build where clause
+      const where = {
+        isActive: true,
+        ...(filters.role && { role: filters.role }),
+        ...(filters.subscriptionStatus && { subscriptionStatus: filters.subscriptionStatus }),
+        ...(filters.search && {
+          OR: [
+            { email: { contains: filters.search, mode: 'insensitive' } }
+          ]
+        })
+      };
+
+      const [users, total] = await Promise.all([
+        prisma.user.findMany({
+          where,
+          include: {
+            ownedVenues: true,
+            _count: {
+              select: { sessions: true }
+            }
+          },
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limit
+        }),
+        prisma.user.count({ where })
       ]);
 
       return {
-        users: dataResult.rows.map(row => new User(row)),
-        total: parseInt(countResult.rows[0].count),
+        users: users.map(user => new User(user)),
+        total,
         page,
         limit,
-        totalPages: Math.ceil(parseInt(countResult.rows[0].count) / limit)
+        totalPages: Math.ceil(total / limit)
       };
     } catch (error) {
       throw new Error(`Error fetching users: ${error.message}`);
@@ -119,55 +130,42 @@ class User {
 
   // Actualizar usuario
   async update(updateData) {
-    const fields = [];
-    const values = [];
-    let valueIndex = 1;
-
-    // Construir query dinámicamente
-    Object.keys(updateData).forEach(key => {
-      if (updateData[key] !== undefined && key !== 'id') {
-        fields.push(`${key} = $${valueIndex}`);
-        values.push(updateData[key]);
-        valueIndex++;
-      }
-    });
-
-    if (fields.length === 0) {
-      throw new Error('No fields to update');
-    }
-
-    // Agregar updated_at
-    fields.push(`updated_at = $${valueIndex}`);
-    values.push(new Date());
-    valueIndex++;
-
-    const query = `
-      UPDATE users 
-      SET ${fields.join(', ')} 
-      WHERE id = $${valueIndex} 
-      RETURNING *
-    `;
-    values.push(this.id);
-
     try {
-      const result = await pool.query(query, values);
-      if (result.rows[0]) {
-        Object.assign(this, result.rows[0]);
-        return this;
+      // Hash password if provided
+      if (updateData.password) {
+        updateData.passwordHash = await bcrypt.hash(updateData.password, 12);
+        delete updateData.password;
       }
-      return null;
+
+      const updatedUser = await prisma.user.update({
+        where: { id: this.id },
+        data: updateData,
+        include: {
+          ownedVenues: true,
+          sessions: {
+            where: { isActive: true },
+            orderBy: { createdAt: 'desc' }
+          }
+        }
+      });
+
+      Object.assign(this, updatedUser);
+      return this;
     } catch (error) {
       throw new Error(`Error updating user: ${error.message}`);
     }
   }
 
-  // Eliminar usuario
+  // Eliminar usuario (soft delete)
   async delete() {
-    const query = 'DELETE FROM users WHERE id = $1 RETURNING *';
-    
     try {
-      const result = await pool.query(query, [this.id]);
-      return result.rows[0] ? true : false;
+      await prisma.user.update({
+        where: { id: this.id },
+        data: { isActive: false }
+      });
+      
+      this.isActive = false;
+      return true;
     } catch (error) {
       throw new Error(`Error deleting user: ${error.message}`);
     }
@@ -175,33 +173,17 @@ class User {
 
   // Actualizar suscripción
   async updateSubscription(subscriptionData) {
-    const query = `
-      UPDATE users 
-      SET 
-        is_premium = $1,
-        stripe_customer_id = $2,
-        subscription_id = $3,
-        subscription_status = $4,
-        updated_at = CURRENT_TIMESTAMP
-      WHERE id = $5 
-      RETURNING *
-    `;
-
-    const values = [
-      subscriptionData.is_premium,
-      subscriptionData.stripe_customer_id,
-      subscriptionData.subscription_id,
-      subscriptionData.subscription_status,
-      this.id
-    ];
-
     try {
-      const result = await pool.query(query, values);
-      if (result.rows[0]) {
-        Object.assign(this, result.rows[0]);
-        return this;
-      }
-      return null;
+      const updatedUser = await prisma.user.update({
+        where: { id: this.id },
+        data: {
+          subscriptionStatus: subscriptionData.subscriptionStatus,
+          stripeCustomerId: subscriptionData.stripeCustomerId
+        }
+      });
+
+      Object.assign(this, updatedUser);
+      return this;
     } catch (error) {
       throw new Error(`Error updating subscription: ${error.message}`);
     }
@@ -209,20 +191,27 @@ class User {
 
   // Obtener estadísticas de usuarios
   static async getStats() {
-    const query = `
-      SELECT 
-        COUNT(*) as total_users,
-        COUNT(CASE WHEN is_premium = true THEN 1 END) as premium_users,
-        COUNT(CASE WHEN role = 'venue' THEN 1 END) as venue_owners,
-        COUNT(CASE WHEN role = 'admin' THEN 1 END) as admins,
-        COUNT(CASE WHEN subscription_status = 'active' THEN 1 END) as active_subscriptions,
-        COUNT(CASE WHEN created_at >= CURRENT_DATE - INTERVAL '30 days' THEN 1 END) as new_users_month
-      FROM users
-    `;
-
     try {
-      const result = await pool.query(query);
-      return result.rows[0];
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+      const [totalUsers, premiumUsers, venueOwners, admins, activeSubscriptions, newUsersMonth] = await Promise.all([
+        prisma.user.count({ where: { isActive: true } }),
+        prisma.user.count({ where: { isActive: true, subscriptionStatus: 'PREMIUM' } }),
+        prisma.user.count({ where: { isActive: true, role: 'VENUE_OWNER' } }),
+        prisma.user.count({ where: { isActive: true, role: 'ADMIN' } }),
+        prisma.user.count({ where: { isActive: true, subscriptionStatus: { in: ['PREMIUM', 'ENTERPRISE'] } } }),
+        prisma.user.count({ where: { isActive: true, createdAt: { gte: thirtyDaysAgo } } })
+      ]);
+
+      return {
+        totalUsers,
+        premiumUsers,
+        venueOwners,
+        admins,
+        activeSubscriptions,
+        newUsersMonth
+      };
     } catch (error) {
       throw new Error(`Error getting user stats: ${error.message}`);
     }
@@ -230,25 +219,39 @@ class User {
 
   // Obtener venues del usuario (si es venue owner)
   async getVenues() {
-    if (this.role !== 'venue') {
+    if (this.role !== 'VENUE_OWNER') {
       return [];
     }
 
-    const query = `
-      SELECT v.*, 
-        COUNT(DISTINCT a.id) as total_analytics,
-        COUNT(DISTINCT c.id) as total_commercials
-      FROM venues v
-      LEFT JOIN analytics a ON v.id = a.venue_id
-      LEFT JOIN commercials c ON v.id = c.venue_id
-      WHERE v.owner_id = $1
-      GROUP BY v.id
-      ORDER BY v.created_at DESC
-    `;
-
     try {
-      const result = await pool.query(query, [this.id]);
-      return result.rows;
+      const venues = await prisma.venue.findMany({
+        where: {
+          ownerId: this.id,
+          isActive: true
+        },
+        include: {
+          commercials: {
+            where: { isActive: true },
+            select: { id: true }
+          },
+          playlists: {
+            where: { isActive: true },
+            select: { id: true }
+          },
+          sessions: {
+            select: { id: true, connectedUsers: true }
+          },
+          _count: {
+            select: {
+              commercials: true,
+              playlists: true
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      return venues;
     } catch (error) {
       throw new Error(`Error getting user venues: ${error.message}`);
     }
@@ -256,31 +259,61 @@ class User {
 
   // Método para serializar (quitar password)
   toJSON() {
-    const { password, ...userWithoutPassword } = this;
+    const { passwordHash, ...userWithoutPassword } = this;
     return userWithoutPassword;
   }
 
   // Verificar si el usuario tiene acceso premium
   hasPremiumAccess() {
-    return this.is_premium && this.subscription_status === 'active';
+    return this.subscriptionStatus === 'PREMIUM' || this.subscriptionStatus === 'ENTERPRISE';
   }
 
   // Verificar si puede acceder a funcionalidades de venue
   canAccessVenue(venueId) {
-    return this.role === 'admin' || (this.role === 'venue' && this.hasVenueAccess(venueId));
+    return this.role === 'ADMIN' || (this.role === 'VENUE_OWNER' && this.hasVenueAccess(venueId));
   }
 
   // Verificar acceso específico a venue
   async hasVenueAccess(venueId) {
-    const query = 'SELECT id FROM venues WHERE id = $1 AND owner_id = $2';
-    
     try {
-      const result = await pool.query(query, [venueId, this.id]);
-      return result.rows.length > 0;
+      const venue = await prisma.venue.findFirst({
+        where: {
+          id: parseInt(venueId),
+          ownerId: this.id,
+          isActive: true
+        }
+      });
+      
+      return !!venue;
     } catch (error) {
       return false;
     }
   }
 }
 
-module.exports = User;
+  // Validar contraseña
+  async validatePassword(password) {
+    try {
+      return await bcrypt.compare(password, this.passwordHash);
+    } catch (error) {
+      throw new Error(`Error validating password: ${error.message}`);
+    }
+  }
+
+  // Actualizar último login
+  async updateLastLogin() {
+    try {
+      const updatedUser = await prisma.user.update({
+        where: { id: this.id },
+        data: { lastLogin: new Date() }
+      });
+      
+      this.lastLogin = updatedUser.lastLogin;
+      return this;
+    } catch (error) {
+      throw new Error(`Error updating last login: ${error.message}`);
+    }
+  }
+}
+
+export default User;

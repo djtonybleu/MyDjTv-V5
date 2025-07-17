@@ -6,39 +6,40 @@ Después de ejecutar el seeder, tendrás estas cuentas:
 
 ### 👑 **Admin**
 - **Email**: `admin@mydjtv.com`
-- **Password**: `admin123`
+- **Password**: `MyDJTV2024!`
 - **Acceso**: Panel completo de administración
 
 ### 🏢 **Venue Owner (Negocio)**
 - **Email**: `venue@mydjtv.com`
-- **Password**: `venue123`
+- **Password**: `Venue2024!`
 - **Acceso**: Dashboard de sucursal + gestión de comerciales
-
-### 👤 **Usuario Premium**
-- **Email**: `user@mydjtv.com`
-- **Password**: `user123`
-- **Acceso**: Control remoto premium activado
 
 ## 🛠️ Pasos para Iniciar
 
-### 1. **Instalar MongoDB**
+### 1. **Configurar PostgreSQL**
 ```bash
 # macOS
-brew install mongodb-community
-brew services start mongodb-community
+brew install postgresql
+brew services start postgresql
 
-# O usar MongoDB Atlas (cloud)
+# O usar Docker
+docker run --name mydjtv-postgres -e POSTGRES_PASSWORD=password -p 5432:5432 -d postgres
 ```
 
 ### 2. **Iniciar Backend**
 ```bash
 cd server
-npm run seed    # Crear usuarios de prueba
+npm install
+npx prisma generate
+npx prisma db push
+npm run seed
 npm run dev     # Iniciar servidor en puerto 5000
 ```
 
 ### 3. **Iniciar Frontend**
 ```bash
+cd ..
+npm install
 npm run dev     # Iniciar en puerto 5173
 ```
 
@@ -61,12 +62,6 @@ npm run dev     # Iniciar en puerto 5173
 2. Sube comerciales de audio
 3. Crea playlists personalizadas
 4. Ve el player de tu sucursal
-
-### Como Usuario Premium (`user@mydjtv.com`)
-1. Ve a `/remote` después del login
-2. Controla la música como Spotify
-3. Busca canciones (usa demo tracks)
-4. Cambia volumen y crea listas
 
 ## 🔧 Funcionalidades Disponibles
 
@@ -94,10 +89,10 @@ npm run dev     # Iniciar en puerto 5173
 
 ## 🚨 Troubleshooting
 
-### MongoDB no conecta
+### PostgreSQL no conecta
 ```bash
-# Verificar que MongoDB esté corriendo
-brew services list | grep mongodb
+# Verificar que PostgreSQL esté corriendo
+brew services list | grep postgres
 ```
 
 ### Puerto ocupado

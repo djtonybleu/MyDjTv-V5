@@ -1,0 +1,120 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               Int       @id @default(autoincrement())
+  name             String
+  email            String    @unique
+  password         String
+  role             String    @default("user")
+  subscriptionStatus String   @default("inactive") @map("subscription_status")
+  subscriptionPlan String    @default("free") @map("subscription_plan")
+  stripeCustomerId String?   @map("stripe_customer_id")
+  subscriptionId   String?   @map("subscription_id")
+  expiresAt        DateTime? @map("expires_at")
+  venueId          Int?      @map("venue_id")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  
+  venue            Venue?    @relation(fields: [venueId], references: [id])
+  ownedVenues      Venue[]   @relation("VenueOwner")
+
+  @@map("users")
+}
+
+model Venue {
+  id                 Int       @id @default(autoincrement())
+  name               String
+  type               String
+  location           String
+  ownerId            Int       @map("owner_id")
+  logo               String?
+  primaryColor       String?   @default("#0EA5E9") @map("primary_color")
+  secondaryColor     String?   @default("#06B6D4") @map("secondary_color")
+  maxUsers           Int       @default(50) @map("max_users")
+  commercialFrequency Int      @default(3) @map("commercial_frequency")
+  qrCode             String?   @map("qr_code")
+  totalPlays         Int       @default(0) @map("total_plays")
+  uniqueUsers        Int       @default(0) @map("unique_users")
+  revenue            Decimal   @default(0) @map("revenue") @db.Decimal(10, 2)
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  
+  owner              User      @relation("VenueOwner", fields: [ownerId], references: [id])
+  users              User[]
+  commercials        Commercial[]
+  playlists          Playlist[]
+
+  @@map("venues")
+}
+
+model Track {
+  id        Int      @id @default(autoincrement())
+  title     String
+  artist    String
+  album     String?
+  duration  Int
+  thumbnail String?
+  spotifyId String?  @map("spotify_id")
+  plays     Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  playlistTracks PlaylistTrack[]
+
+  @@map("tracks")
+}
+
+model Commercial {
+  id        Int      @id @default(autoincrement())
+  title     String
+  venueId   Int      @map("venue_id")
+  audioUrl  String   @map("audio_url")
+  thumbnail String?
+  duration  Int
+  active    Boolean  @default(true)
+  plays     Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  
+  venue     Venue    @relation(fields: [venueId], references: [id])
+
+  @@map("commercials")
+}
+
+model Playlist {
+  id        Int      @id @default(autoincrement())
+  name      String
+  venueId   Int      @map("venue_id")
+  isActive  Boolean  @default(false) @map("is_active")
+  genre     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  
+  venue     Venue    @relation(fields: [venueId], references: [id])
+  tracks    PlaylistTrack[]
+
+  @@map("playlists")
+}
+
+model PlaylistTrack {
+  id         Int      @id @default(autoincrement())
+  playlistId Int      @map("playlist_id")
+  trackId    Int      @map("track_id")
+  position   Int      @default(0)
+  
+  playlist   Playlist @relation(fields: [playlistId], references: [id])
+  track      Track    @relation(fields: [trackId], references: [id])
+
+  @@unique([playlistId, trackId])
+  @@map("playlist_tracks")
+}
