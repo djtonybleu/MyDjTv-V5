@@ -15,10 +15,10 @@ const createInitialData = async () => {
       await User.create({
         name: 'Admin MyDJTV',
         email: 'admin@mydjtv.com',
-        password: 'admin123',
+        password: process.env.ADMIN_PASSWORD || 'MyDJTV2024!Admin',
         role: 'admin'
       });
-      console.log('✅ Admin user created: admin@mydjtv.com / admin123');
+      console.log('✅ Admin user created: admin@mydjtv.com / [password from env]');
     }
 
     // Create demo venue owner
@@ -27,7 +27,7 @@ const createInitialData = async () => {
       const venueOwner = await User.create({
         name: 'Café Central Owner',
         email: 'venue@mydjtv.com',
-        password: 'venue123',
+        password: process.env.VENUE_PASSWORD || 'MyDJTV2024!Venue',
         role: 'venue'
       });
 
@@ -47,7 +47,7 @@ const createInitialData = async () => {
       venueOwner.venue = venue._id;
       await venueOwner.save();
       
-      console.log('✅ Venue owner created: venue@mydjtv.com / venue123');
+      console.log('✅ Venue owner created: venue@mydjtv.com / [password from env]');
     }
 
     // Create demo user with premium subscription
@@ -56,21 +56,21 @@ const createInitialData = async () => {
       await User.create({
         name: 'Demo User',
         email: 'user@mydjtv.com',
-        password: 'user123',
+        password: process.env.USER_PASSWORD || 'MyDJTV2024!User',
         role: 'user',
         subscription: {
           status: 'active',
           plan: 'premium'
         }
       });
-      console.log('✅ Premium user created: user@mydjtv.com / user123');
+      console.log('✅ Premium user created: user@mydjtv.com / [password from env]');
     }
 
     console.log('\n🎉 Initial data created!');
     console.log('\n📋 Test Accounts:');
-    console.log('Admin: admin@mydjtv.com / admin123');
-    console.log('Venue: venue@mydjtv.com / venue123');
-    console.log('User: user@mydjtv.com / user123');
+    console.log('Admin: admin@mydjtv.com / [check ADMIN_PASSWORD env var]');
+    console.log('Venue: venue@mydjtv.com / [check VENUE_PASSWORD env var]');
+    console.log('User: user@mydjtv.com / [check USER_PASSWORD env var]');
     
     process.exit(0);
   } catch (error) {

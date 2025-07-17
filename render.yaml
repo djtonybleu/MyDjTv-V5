@@ -16,7 +16,10 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: CLIENT_URL
-        value: https://mydjtv-frontend.onrender.com
+        fromService:
+          type: web
+          name: mydjtv-frontend
+          property: url
       - key: STRIPE_SECRET_KEY
         sync: false
       - key: STRIPE_WEBHOOK_SECRET
@@ -43,10 +46,25 @@ services:
     staticPublishPath: ./dist
     envVars:
       - key: VITE_API_URL
-        value: https://mydjtv-backend.onrender.com/api
+        fromService:
+          type: web
+          name: mydjtv-backend
+          property: url
+        suffix: /api
       - key: VITE_SOCKET_URL
-        value: https://mydjtv-backend.onrender.com
+        fromService:
+          type: web
+          name: mydjtv-backend
+          property: url
       - key: VITE_STRIPE_PUBLISHABLE_KEY
+        sync: false
+      - key: VITE_VAPID_PUBLIC_KEY
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: VENUE_PASSWORD
+        sync: false
+      - key: USER_PASSWORD
         sync: false
 
 databases:

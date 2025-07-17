@@ -7,19 +7,20 @@ import {
   getVenueAnalytics 
 } from '../controllers/venueController.js';
 import { protect, restrictTo } from '../middleware/auth.js';
+import { venueCache, analyticsCache } from '../middleware/apiCache.js';
 
 const router = express.Router();
 
 router.use(protect);
 
 router.route('/')
-  .get(getVenues)
+  .get(venueCache, getVenues)
   .post(restrictTo('venue', 'admin'), createVenue);
 
 router.route('/:id')
-  .get(getVenue)
+  .get(venueCache, getVenue)
   .put(restrictTo('venue', 'admin'), updateVenue);
 
-router.get('/:id/analytics', restrictTo('venue', 'admin'), getVenueAnalytics);
+router.get('/:id/analytics', restrictTo('venue', 'admin'), analyticsCache, getVenueAnalytics);
 
 export default router;

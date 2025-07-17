@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
-import User from '../models/User.js';
+import { User } from '../models/User.js';
+import env from '../config/env.js';
 
 export const protect = async (req, res, next) => {
   try {
@@ -13,8 +14,8 @@ export const protect = async (req, res, next) => {
       return res.status(401).json({ message: 'No token provided' });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.id).populate('venue');
+    const decoded = jwt.verify(token, env.JWT_SECRET);
+    const user = await User.findById(decoded.id);
     
     if (!user) {
       return res.status(401).json({ message: 'User not found' });
@@ -23,6 +24,7 @@ export const protect = async (req, res, next) => {
     req.user = user;
     next();
   } catch (error) {
+    console.error('Auth middleware error:', error);
     res.status(401).json({ message: 'Invalid token' });
   }
 };
@@ -37,7 +39,7 @@ export const restrictTo = (...roles) => {
 };
 
 export const requireSubscription = (req, res, next) => {
-  if (req.user.subscription.status !== 'active') {
+  if (req.user.subscription_status !== 'active') {
     return res.status(403).json({ message: 'Active subscription required' });
   }
   next();

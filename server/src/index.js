@@ -3,11 +3,15 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import helmet from 'helmet';
-import rateLimit from 'express-rate-limit';
-import dotenv from 'dotenv';
 
+import env from './config/env.js';
+import logger from './config/logger.js';
+import requestLogger from './middleware/requestLogger.js';
+import { generalRateLimit, progressiveSlowDown } from './middleware/rateLimiting.js';
+import cache from './config/cache.js';
 import { connectDB } from './config/database.js';
 import { initializeAnalytics } from './services/analyticsService.js';
+import { getQueueStats, closeQueues } from './services/queueService.js';
 import authRoutes from './routes/auth.js';
 import venueRoutes from './routes/venues.js';
 import musicRoutes from './routes/music.js';
@@ -15,38 +19,38 @@ import paymentRoutes from './routes/payments.js';
 import commercialRoutes from './routes/commercials.js';
 import demoRoutes from './routes/demo.js';
 
-dotenv.config();
 
 const app = express();
 const server = createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: process.env.CLIENT_URL || "http://localhost:5173",
+    origin: env.CLIENT_URL,
     methods: ["GET", "POST"]
   }
 });
 
+// Logging middleware (before other middleware)
+app.use(requestLogger);
+
 // Security middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.CLIENT_URL || "http://localhost:5173",
+  origin: env.CLIENT_URL,
   credentials: true
 }));
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
-});
-app.use(limiter);
+// Rate limiting (progressive)
+app.use(generalRateLimit);
+app.use(progressiveSlowDown);
 
 // Body parsing middleware
 app.use('/api/payments/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Connect to database
+// Connect to database and cache
 connectDB();
+cache.connect();
 initializeAnalytics();
 
 // Routes
@@ -57,16 +61,22 @@ app.use('/api/payments', paymentRoutes);
 app.use('/api/commercials', commercialRoutes);
 app.use('/api/demo', demoRoutes);
 
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date().toISOString() });
+// Health check with queue status
+app.get('/api/health', async (req, res) => {
+  const queueStats = await getQueueStats();
+  res.json({ 
+    status: 'OK', 
+    timestamp: new Date().toISOString(),
+    cache: cache.isConnected ? 'connected' : 'disconnected',
+    queues: queueStats
+  });
 });
 
 // Socket.IO for real-time features
 const venueRooms = new Map();
 
 io.on('connection', (socket) => {
-  console.log('User connected:', socket.id);
+  logger.info('User connected', { socketId: socket.id });
 
   socket.on('join-venue', (venueId) => {
     socket.join(venueId);
@@ -93,7 +103,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.id);
+    logger.info('User disconnected', { socketId: socket.id });
     
     // Remove from all venue rooms
     for (const [venueId, users] of venueRooms.entries()) {
@@ -111,8 +121,24 @@ io.on('connection', (socket) => {
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ message: 'Something went wrong!' });
+  logger.error('Unhandled error', {
+    error: err.message,
+    stack: err.stack,
+    url: req.url,
+    method: req.method,
+    ip: req.ip,
+    userAgent: req.get('User-Agent')
+  });
+  
+  const statusCode = err.statusCode || 500;
+  const message = env.NODE_ENV === 'production' 
+    ? 'Internal server error' 
+    : err.message;
+    
+  res.status(statusCode).json({ 
+    message,
+    ...(env.NODE_ENV !== 'production' && { stack: err.stack })
+  });
 });
 
 // 404 handler
@@ -120,9 +146,27 @@ app.use('*', (req, res) => {
   res.status(404).json({ message: 'Route not found' });
 });
 
-const PORT = process.env.PORT || 5000;
+// Graceful shutdown handling
+process.on('SIGTERM', async () => {
+  logger.info('SIGTERM received, starting graceful shutdown...');
+  await closeQueues();
+  await cache.disconnect();
+  process.exit(0);
+});
 
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`Environment: ${process.env.NODE_ENV}`);
+process.on('SIGINT', async () => {
+  logger.info('SIGINT received, starting graceful shutdown...');
+  await closeQueues();
+  await cache.disconnect();
+  process.exit(0);
+});
+
+server.listen(env.PORT, () => {
+  logger.info('✅ Environment variables validated successfully');
+  logger.info('🚀 Server started', {
+    port: env.PORT,
+    environment: env.NODE_ENV,
+    nodeVersion: process.version,
+    cacheConnected: cache.isConnected
+  });
 });

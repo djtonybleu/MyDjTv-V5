@@ -10,8 +10,8 @@ SPOTIFY_CLIENT_SECRET=tu_spotify_client_secret
 CLOUDINARY_CLOUD_NAME=tu_cloudinary_name
 CLOUDINARY_API_KEY=tu_cloudinary_api_key
 CLOUDINARY_API_SECRET=tu_cloudinary_api_secret
-VAPID_PUBLIC_KEY=BFIKhszcJKi6HALr34wMufkRvw4diO3K3GyklO4nJ4YbTaTLo9KrBDPx9czqmLDFBfYjj8BFZc10658mQFtmTwU
-VAPID_PRIVATE_KEY=bnCCYh-aM11mnK4oRW4xuA-yqM09FDtVZPO29inmrJU
+VAPID_PUBLIC_KEY=tu_vapid_public_key
+VAPID_PRIVATE_KEY=tu_vapid_private_key
 ```
 
 ## Variables de Entorno del Frontend
@@ -38,4 +38,5 @@ VITE_STRIPE_PUBLISHABLE_KEY=pk_live_tu_clave_publica_stripe
 - Copiar credenciales del dashboard
 
 ### 4. **VAPID Keys**
-- Ya generadas arriba ✅
+- Generar con: `npx web-push generate-vapid-keys`
+- Copiar public y private key generadas
